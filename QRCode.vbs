@@ -3065,6 +3065,7 @@ Class Symbols
         Dim ret
         ret = False
 
+        Dim i
         For i = startIndex To Len(s)
             If Not m_encAlpha.InSubset(Mid(s, i, 1)) Then
                 Exit For
