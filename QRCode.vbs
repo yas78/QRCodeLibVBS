@@ -15,12 +15,12 @@ Private Const MODE_BYTE          = 3
 Private Const MODE_KANJI         = 4
 
 Private Const MODEINDICATOR_LENGTH = 4
-Private Const MODEINDICATOR_TERMINATOR_VALUE           = &H0
-Private Const MODEINDICATOR_NUMERIC_VALUE              = &H1
-Private Const MODEINDICATOR_ALPAHNUMERIC_VALUE         = &H2
-Private Const MODEINDICATOR_STRUCTURED_APPEND_VALUE    = &H3
-Private Const MODEINDICATOR_BYTE_VALUE                 = &H4
-Private Const MODEINDICATOR_KANJI_VALUE                = &H8
+Private Const MODEINDICATOR_TERMINATOR_VALUE        = &H0
+Private Const MODEINDICATOR_NUMERIC_VALUE           = &H1
+Private Const MODEINDICATOR_ALPAHNUMERIC_VALUE      = &H2
+Private Const MODEINDICATOR_STRUCTURED_APPEND_VALUE = &H3
+Private Const MODEINDICATOR_BYTE_VALUE              = &H4
+Private Const MODEINDICATOR_KANJI_VALUE             = &H8
 
 Private Const SYMBOLSEQUENCEINDICATOR_POSITION_LENGTH     = 4
 Private Const SYMBOLSEQUENCEINDICATOR_TOTAL_NUMBER_LENGTH = 4
@@ -31,12 +31,12 @@ Private Const STRUCTUREDAPPEND_HEADER_LENGTH      = 20
 Private Const QUIET_ZONE_MIN_WIDTH = 4
 
 Private Const adTypeBinary = 1
-Private Const adTypeText = 2
+Private Const adTypeText   = 2
 Private Const adSaveCreateOverWrite = 2
 
-Private Const DIRECTION_UP = 0
-Private Const DIRECTION_DOWN = 1
-Private Const DIRECTION_LEFT = 2
+Private Const DIRECTION_UP    = 0
+Private Const DIRECTION_DOWN  = 1
+Private Const DIRECTION_LEFT  = 2
 Private Const DIRECTION_RIGHT = 3
 
 Private Const MIN_MODULE_SIZE = 2
@@ -49,6 +49,36 @@ Private Const FORMAT_INFO   = 4
 Private Const SEPARATOR_PTN = 5
 Private Const TIMING_PTN    = 6
 Private Const VERSION_INFO  = 7
+
+Private Const CompressionLevel_Fastest = 0
+Private Const CompressionLevel_Fast    = 1
+Private Const CompressionLevel_Default = 2
+Private Const CompressionLevel_Slowest = 3
+
+Private Const DeflateBType_NoCompression = 0
+Private Const DeflateBType_CompressedWithFixedHuffmanCodes = 1
+Private Const DeflateBType_CompressedWithDynamicHuffmanCodes = 2
+Private Const DeflateBType_Reserved = 3
+
+Private Const PngColorType_pGrayscale = 0
+Private Const PngColorType_pTrueColor = 2
+Private Const PngColorType_pIndexColor = 3
+Private Const PngColorType_pGrayscaleAlpha = 4
+Private Const PngColorType_pTrueColorAlpha = 6
+
+Private Const PngCompressionMethod_Deflate = 0
+
+Private Const PngFilterType_pNone = 0
+Private Const PngFilterType_pSub = 1
+Private Const PngFilterType_pUp = 2
+Private Const PngFilterType_pAverage = 3
+Private Const PngFilterType_pPaeth = 4
+
+Private Const PngInterlaceMethod_pNo = 0
+Private Const PngInterlaceMethod_pAdam7 = 1
+
+Private Const BackStyle_bkTransparent = 0
+Private Const BackStyle_bkOpaque = 1
 
 Private AlignmentPattern:     Set AlignmentPattern = New AlignmentPattern_
 Private CharCountIndicator:   Set CharCountIndicator = New CharCountIndicator_
@@ -70,6 +100,12 @@ Private VersionInfo:          Set VersionInfo = New VersionInfo_
 Private ColorCode:            Set ColorCode = New ColorCode_
 Private GraphicPath:          Set GraphicPath = New GraphicPath_
 Private DIB:                  Set DIB = New DIB_
+Private PNG:                  Set PNG = New PNG_
+Private CRC32:                Set CRC32 = New CRC32_
+Private ADLER32:              Set ADLER32 = New ADLER32_
+Private Deflate:              Set Deflate = New Deflate_
+Private ZLIB:                 Set ZLIB = New ZLIB_
+Private BitConverter:         Set BitConverter = New BitConverter_
 
 
 Call Main(WScript.Arguments)
@@ -84,34 +120,24 @@ Public Sub Main(ByVal args)
         Call WScript.Quit(-1)
     End If
 
-    Dim sbls
-    Set sbls = CreateSymbols(params("ecr"), MAX_VERSION, False)
+    If Len(params("data")) = 0 Then
+        Call WScript.Quit(-1)
+    End If
+
+    Dim sbls: Set sbls = CreateSymbols(CLng(params("ecr")), MAX_VERSION, False)
     Call sbls.AppendText(params("data"))
 
-    Select Case params("filetype")
-        Case "bmp"
-            Select Case params("colordepth")
-                Case 1
-                    Call sbls.Item(0).Save1bppDIB( _
-                        params("out"), params("scale"), params("forecolor"), params("backcolor"))
-                Case 24
-                    Call sbls.Item(0).Save24bppDIB( _
-                        params("out"), params("scale"), params("forecolor"), params("backcolor"))
-                Case Else
-                    Call Err.Raise(51)
-            End Select
-        Case "svg"
-            Call sbls.Item(0).SaveSvg(params("out"), params("scale"), params("forecolor"))
-        Case Else
-            Call Err.Raise(51)
-    End Select
+    Dim sbl: Set sbl = sbls.Item(0)
+    Call sbl.SaveAs2( _
+        params("out"), CLng(params("scale")), CBool(params("monochrome")), _
+        CBool(params("transparent")), params("forecolor"), params("backcolor"))
 
     Call WScript.Quit(0)
 End Sub
 
 Private Function GetParams(ByVal args)
     Dim ks
-    ks = Array("data", "out", "forecolor", "backcolor", "colordepth", "ecr", "scale", "filetype")
+    ks = Array("data", "out", "monochrome", "transparent", "forecolor", "backcolor", "ecr", "scale")
 
     Dim params
     Set params = CreateObject("Scripting.Dictionary")
@@ -138,15 +164,15 @@ Private Function GetParams(ByVal args)
     params("scale") = 5
     params("forecolor") = ColorCode.BLACK
     params("backcolor") = ColorCode.WHITE
-    params("colordepth") = 24
+    params("monochrome") = False
+    params("transparent") = False
     params("ecr") = "M"
-    params("filetype") = "bmp"
 
     For Each k In ks
         If args.Named.Exists(k) Then
             v = args.Named.Item(k)
             If Len(v) = 0 Then
-                Call WScript.Echo("argument error '" & k  & "'")
+                Call WScript.Echo("argument error [" & k  & "]")
                 Exit Function
             End If
             If IsNumeric(v) Then
@@ -157,17 +183,28 @@ Private Function GetParams(ByVal args)
     Next
 
     If Len(params("out")) = 0 Then
-        Call WScript.Echo("argument error 'out'")
+        Call WScript.Echo("argument error [out]")
         Exit Function
     End If
 
-    If params("colordepth")  <> 1 And params("colordepth") <> 24 Then
-        Call WScript.Echo("argument error 'colordepth'")
-        Exit Function
-    End If
+    Select Case LCase(CStr(params("monochrome")))
+        Case "true", "false"
+            ' NOP
+        Case Else
+            Call WScript.Echo("argument error [monochrome]")
+            Exit Function
+    End Select
+
+    Select Case LCase(CStr(params("transparent")))
+        Case "true", "false"
+            ' NOP
+        Case Else
+            Call WScript.Echo("argument error [transparent]")
+            Exit Function
+    End Select
 
     If Not ColorCode.IsWebColor(params("forecolor")) Then
-        Call WScript.Echo("argument error 'forecolor'")
+        Call WScript.Echo("argument error [forecolor]")
         Exit Function
     End If
 
@@ -177,12 +214,12 @@ Private Function GetParams(ByVal args)
     End If
 
     If Not IsNumeric(params("scale")) Then
-        Call WScript.Echo("argument error 'scale'")
+        Call WScript.Echo("argument error [scale]")
         Exit Function
     End If
 
     If params("scale") < MIN_MODULE_SIZE Then
-        Call WScript.Echo("argument error 'scale'")
+        Call WScript.Echo("argument error [scale]")
         Exit Function
     End If
 
@@ -196,17 +233,17 @@ Private Function GetParams(ByVal args)
         Case "H"
             v = ECR_H
         Case Else
-            Call WScript.Echo("argument error 'ecr'")
+            Call WScript.Echo("argument error [ecr]")
             Exit Function
     End Select
     params("ecr") = v
 
-    params("filetype") = LCase(fso.GetExtensionName(params("out")))
-    Select Case params("filetype")
-        Case "bmp", "svg"
+    Dim ext: ext = fso.GetExtensionName(params("out"))
+    Select Case LCase(ext)
+        Case "bmp", "svg", "png"
             ' NOP
         Case Else
-            Call WScript.Echo("argument error 'out'")
+            Call WScript.Echo("argument error [out] unsupported file type")
             Exit Function
     End Select
 
@@ -558,14 +595,16 @@ Class BinaryWriter
                 Case vbLong
                     temp = v And &HFF&
                     Call m_stream.Write(m_byteTable(temp))
-
                     temp = (v And &HFF00&) \ 2 ^ 8
                     Call m_stream.Write(m_byteTable(temp))
-
                     temp = (v And &HFF0000) \ 2 ^ 16
                     Call m_stream.Write(m_byteTable(temp))
 
-                    temp = (v And &HFF000000) \ 2 ^ 24
+                    If (v And &H80000000) <> 0 Then
+                        temp = ((v And &H7F000000) \ 2 ^ 24) Or &H80
+                    Else
+                        temp = v \ 2 ^ 24
+                    End If
                     Call m_stream.Write(m_byteTable(temp))
                 Case Else
                     Call Err.Raise(5)
@@ -2461,7 +2500,7 @@ Class Symbol
         Next
     End Sub
 
-    Private Function GetBitmap1bpp(ByVal moduleSize, ByVal foreColor, ByVal backColor)
+    Private Function GetMonochromeBMP(ByVal moduleSize, ByVal foreColor, ByVal backColor)
         Dim foreRgb
         foreRgb = ColorCode.ToRGB(foreColor)
         Dim backRgb
@@ -2506,17 +2545,16 @@ Class Symbol
         Dim bs
         Set bs = New BitSequence
 
-        Dim r
+        Dim r, c
         Dim i
-        Dim v
         Dim pixelColor
         Dim bitmapRow
 
         For r = UBound(moduleMatrix) To 0 Step -1
             Call bs.Clear
 
-            For Each v In moduleMatrix(r)
-                If IsDark(v) Then
+            For Each c In moduleMatrix(r)
+                If IsDark(c) Then
                     pixelColor = 0
                 Else
                     pixelColor = 1
@@ -2540,10 +2578,10 @@ Class Symbol
         Dim ret
         Set ret = DIB.GetDIB(bitmapData, pictWidth, pictHeight, foreRgb, backRgb, True)
 
-        Set GetBitmap1bpp = ret
+        Set GetMonochromeBMP = ret
     End Function
 
-    Private Function GetBitmap24bpp(ByVal moduleSize, ByVal foreColor, ByVal backColor)
+    Private Function GetTrueColorBMP(ByVal moduleSize, ByVal foreColor, ByVal backColor)
         Dim foreRgb
         foreRgb = ColorCode.ToRGB(foreColor)
         Dim backRgb
@@ -2577,10 +2615,8 @@ Class Symbol
         Dim offset
         offset = 0
 
-        Dim r
+        Dim r, c
         Dim i
-        Dim v
-
         Dim colorRGB
         Dim bitmapRow()
         Dim idx
@@ -2589,8 +2625,8 @@ Class Symbol
             ReDim bitmapRow(rowSize - 1)
             idx = 0
 
-            For Each v In moduleMatrix(r)
-                If IsDark(v) Then
+            For Each c In moduleMatrix(r)
+                If IsDark(c) Then
                     colorRGB = foreRgb
                 Else
                     colorRGB = backRgb
@@ -2617,56 +2653,10 @@ Class Symbol
         Dim ret
         Set ret = DIB.GetDIB(bitmapData, pictWidth, pictHeight, foreRgb, backRgb, False)
 
-        Set GetBitmap24bpp = ret
+        Set GetTrueColorBMP = ret
     End Function
 
-    Public Sub Save1bppDIB(ByVal filePath, ByVal moduleSize, ByVal foreRgb, ByVal backRgb)
-        If m_dataBitCounter = 0 Then Call Err.Raise(51)
-
-        If Len(filePath) = 0 Then Call Err.Raise(5)
-        If moduleSize < MIN_MODULE_SIZE Then Call Err.Raise(5)
-        If ColorCode.IsWebColor(foreRgb) = False Then Call Err.Raise(5)
-        If ColorCode.IsWebColor(backRgb) = False Then Call Err.Raise(5)
-
-        Dim dib
-        Set dib = GetBitmap1bpp(moduleSize, foreRgb, backRgb)
-
-        Call dib.SaveToFile(filePath, adSaveCreateOverWrite)
-    End Sub
-
-    Public Sub Save24bppDIB(ByVal filePath, ByVal moduleSize, ByVal foreRgb, ByVal backRgb)
-        If m_dataBitCounter = 0 Then Call Err.Raise(51)
-
-        If Len(filePath) = 0 Then Call Err.Raise(5)
-        If moduleSize < MIN_MODULE_SIZE Then Call Err.Raise(5)
-        If ColorCode.IsWebColor(foreRgb) = False Then Call Err.Raise(5)
-        If ColorCode.IsWebColor(backRgb) = False Then Call Err.Raise(5)
-
-        Dim dib
-        Set dib = GetBitmap24bpp(moduleSize, foreRgb, backRgb)
-
-        Call dib.SaveToFile(filePath, adSaveCreateOverWrite)
-    End Sub
-
-    Public Sub SaveSvg(ByVal filePath, ByVal moduleSize, ByVal foreRgb)
-        If m_dataBitCounter = 0 Then Call Err.Raise(51)
-
-        If Len(filePath) = 0 Then Call Err.Raise(5)
-        If moduleSize < MIN_MODULE_SIZE Then Call Err.Raise(5)
-        If ColorCode.IsWebColor(foreRgb) = False Then Call Err.Raise(5)
-
-        Dim svg
-        svg = GetSvg(moduleSize, foreRgb)
-
-        Dim fso
-        Set fso = CreateObject("Scripting.FileSystemObject")
-        Dim ts
-        Set ts = fso.CreateTextFile(filePath, True)
-        Call ts.WriteLine(svg)
-        ts.Close
-    End Sub
-
-    Public Function GetSvg(ByVal moduleSize, ByVal foreRgb)
+    Private Function GetSvg(ByVal moduleSize, ByVal foreRgb)
         If m_dataBitCounter = 0 Then Call Err.Raise(51)
 
         If moduleSize < MIN_MODULE_SIZE Then Call Err.Raise(5)
@@ -2725,7 +2715,6 @@ Class Symbol
 
         Dim gpPath
         Dim k
-
         For Each gpPath In gpPaths
             Call buf.Add(indent & "M ")
 
@@ -2747,6 +2736,205 @@ Class Symbol
 
         GetSvg = svg
     End Function
+
+    Private Function GetMonochromePNG(ByVal moduleSize, ByVal foreRgb, ByVal backRgb)
+        Dim foreColorRgb
+        foreColorRgb = ColorCode.ToRGB(foreRgb)
+        Dim backColorRgb
+        backColorRgb = ColorCode.ToRGB(backRgb)
+
+        If m_dataBitCounter = 0 Then Call Err.Raise(51)
+
+        Dim moduleMatrix
+        moduleMatrix = QuietZone.Place(GetModuleMatrix())
+
+        Dim moduleCount
+        moduleCount = UBound(moduleMatrix) + 1
+
+        Dim pictWidth
+        pictWidth = moduleCount * moduleSize
+
+        Dim pictHeight
+        pictHeight = moduleCount * moduleSize
+
+        Dim pack8bit
+        If pictWidth Mod 8 > 0 Then
+            pack8bit = 8 - (pictWidth Mod 8)
+        End If
+
+        Dim bs
+        Set bs = New BitSequence
+
+        Dim pixelColor
+
+        Dim filterType
+        filterType = 0
+
+        Dim r, c
+        Dim i, j
+        For r = 0 To UBound(moduleMatrix)
+            For i = 1 To moduleSize
+                Call bs.Append(filterType, 8)
+
+                For Each c In moduleMatrix(r)
+                    If IsDark(c) Then
+                        pixelColor = 0
+                    Else
+                        pixelColor = 1
+                    End If
+
+                    For j = 1 To moduleSize
+                        Call bs.Append(pixelColor, 1)
+                    Next
+                Next
+                Call bs.Append(0, pack8bit)
+            Next
+        Next
+
+        Dim bitmapData
+        bitmapData = bs.GetBytes()
+
+        Set GetMonochromePNG = PNG.GetPNG( _
+            bitmapData, pictWidth, pictHeight, foreColorRgb, backColorRgb, _
+            PngColorType_pIndexColor _
+        )
+    End Function
+
+    Private Function GetTrueColorPNG( _
+        ByVal moduleSize, ByVal foreRgb, ByVal backRgb, ByVal bkStyle)
+
+        Dim foreColorRgb
+        foreColorRgb = ColorCode.ToRGB(foreRgb)
+        Dim backColorRgb
+        backColorRgb = ColorCode.ToRGB(backRgb)
+
+        If m_dataBitCounter = 0 Then Call Err.Raise(51)
+
+        Dim moduleMatrix
+        moduleMatrix = QuietZone.Place(GetModuleMatrix())
+
+        Dim pictWidth
+        pictWidth = (UBound(moduleMatrix) + 1) * moduleSize
+
+        Dim pictHeight
+        pictHeight = pictWidth
+
+        Dim rowSize
+        If bkStyle = BackStyle_bkTransparent Then
+            rowSize = 1 + 4 * pictWidth
+        Else
+            rowSize = 1 + 3 * pictWidth
+        End If
+
+        Dim bitmapData
+        ReDim bitmapData(rowSize * pictHeight - 1)
+
+        Dim offset
+        offset = 0
+
+        Dim colorRgb
+        Dim alpha
+        Dim idx
+        idx = 0
+
+        Dim filterType
+        filterType = 0
+
+        Dim r, c
+        Dim i, j
+        For r = 0 To UBound(moduleMatrix)
+            For i = 1 To moduleSize
+                bitmapData(idx) = CByte(filterType)
+                idx = idx + 1
+
+                For Each c In moduleMatrix(r)
+                    If IsDark(c) Then
+                        colorRgb = foreColorRgb
+                        alpha = CByte(&HFF)
+                    Else
+                        colorRgb = backColorRgb
+                        alpha = CByte(0)
+                    End If
+
+                    For j = 1 To moduleSize
+                        bitmapData(idx + 0) = CByte(colorRgb And &HFF&)               ' R
+                        bitmapData(idx + 1) = CByte((colorRgb And &HFF00&) \ 2 ^ 8)   ' G
+                        bitmapData(idx + 2) = CByte((colorRgb And &HFF0000) \ 2 ^ 16) ' B
+                        idx = idx + 3
+
+                        If bkStyle = BackStyle_bkTransparent Then
+                            bitmapData(idx) = alpha
+                            idx = idx + 1
+                        End If
+                    Next
+                Next
+            Next
+        Next
+
+        Dim tColor
+        If bkStyle = BackStyle_bkTransparent Then
+            tColor = PngColorType_pTrueColorAlpha
+        Else
+            tColor = PngColorType_pTrueColor
+        End If
+
+        Set GetTrueColorPNG = PNG.GetPNG( _
+            bitmapData, pictWidth, pictHeight, foreColorRgb, backColorRgb, tColor)
+    End Function
+
+    Public Sub SaveAs(ByVal filename)
+        Call SaveAs2(filename, 5, False, False, "#000000", "#FFFFFF")
+    End Sub
+
+    Public Sub SaveAs2( _
+        ByVal filename, ByVal moduleSize, ByVal monochrome, ByVal transparent, _
+        ByVal foreRgb, ByVal backRgb)
+
+        If m_dataBitCounter = 0 Then Call Err.Raise(51)
+
+        If Len(filename) = 0 Then Call Err.Raise(5, , "[filename]")
+        If moduleSize < MIN_MODULE_SIZE Then Call Err.Raise(5, , "[moduleSize]")
+        If VarType(monochrome) <> vbBoolean then  Call Err.Raise(5, , "[monochrome]")
+        If ColorCode.IsWebColor(foreRgb) = False Then Call Err.Raise(5, , "[foreRgb]")
+        If ColorCode.IsWebColor(backRgb) = False Then Call Err.Raise(5, , "[backRgb]")
+
+        Dim fso
+        Set fso = CreateObject("Scripting.FileSystemObject")
+
+        Dim ext
+        ext = fso.GetExtensionName(filename)
+
+        Dim bw, txt
+        Dim ts
+
+        Select Case LCase(ext)
+            Case "bmp"
+                If monochrome Then
+                    Set bw = GetMonochromeBMP(moduleSize, foreRgb, backRgb)
+                Else
+                    Set bw = GetTrueColorBMP(moduleSize, foreRgb, backRgb)
+                End If
+                Call bw.SaveToFile(filename, adSaveCreateOverWrite)
+            Case "png"
+                If monochrome Then
+                    Set bw = GetMonochromePNG(moduleSize, foreRgb, backRgb)
+                Else
+                    If transparent Then
+                        Set bw = GetTrueColorPNG(moduleSize, foreRgb, backRgb, BackStyle_bkTransparent)
+                    Else
+                        Set bw = GetTrueColorPNG(moduleSize, foreRgb, backRgb, BackStyle_bkOpaque)
+                    End If
+                End If
+                Call bw.SaveToFile(filename, adSaveCreateOverWrite)
+            Case "svg"
+                txt = GetSvg(moduleSize, foreRgb)
+                Set ts = fso.CreateTextFile(filename, True)
+                Call ts.WriteLine(txt)
+                Call ts.Close
+            Case Else
+                Call Err.Raise(5)
+        End Select
+    End Sub
 End Class
 
 
@@ -2832,12 +3020,11 @@ Class Symbols
     End Function
 
     Public Sub AppendText(ByVal s)
+        If Len(s) = 0 Then Call Err.Raise(5)
+
         Dim oldMode
         Dim newMode
         Dim i
-
-        If Len(s) = 0 Then Call Err.Raise(5)
-
         For i = 1 To Len(s)
             oldMode = m_currSymbol.CurrentEncodingMode
 
@@ -2927,7 +3114,6 @@ Class Symbols
         cnt = 0
 
         Dim i
-
         For i = startIndex To Len(s)
             If m_encAlpha.InExclusiveSubset(Mid(s, i, 1)) Then
                 cnt = cnt + 1
@@ -2969,7 +3155,6 @@ Class Symbols
         cnt = 0
 
         Dim i
-
         For i = startIndex To Len(s)
             If m_encNum.InSubset(Mid(s, i, 1)) Then
                 cnt = cnt + 1
@@ -3124,7 +3309,6 @@ Class Symbols
         ret = False
 
         Dim i
-
         For i = startIndex To Len(s)
             If Not m_encByte.InSubset(Mid(s, i, 1)) Then
                 Exit For
@@ -3165,7 +3349,6 @@ Class Symbols
         cnt = 0
 
         Dim i
-
         For i = startIndex To Len(s)
             If Not m_encByte.InSubset(Mid(s, i, 1)) Then
                 Exit For
@@ -3764,5 +3947,607 @@ Class GraphicPath_
         Next
 
         FindContours = gpPaths.Items()
+    End Function
+End Class
+
+
+Class CRC32_
+    Private m_crcTable(255)
+    Private m_crcTableComputed
+
+    Public Function Checksum(ByRef data)
+        Checksum = Update(0, data)
+    End Function
+
+    Public Function Update(ByVal crc, ByRef data)
+        Dim c
+        c = crc Xor &HFFFFFFFF
+
+        If Not m_crcTableComputed Then
+            Call MakeCrcTable
+        End If
+
+        Dim n
+        For n = 0 To UBound(data)
+            c = m_crcTable((c Xor data(n)) And &HFF) Xor _
+                    (((c And &HFFFFFF00) \ 2 ^ 8) And &HFFFFFF)
+        Next
+
+        Update = c Xor &HFFFFFFFF
+    End Function
+
+    Private Sub MakeCrcTable()
+        Dim c
+
+        Dim k
+        Dim n
+        For n = 0 To 255
+            c = n
+            For k = 0 To 7
+                If c And 1 Then
+                    c = &HEDB88320 Xor ((c And &HFFFFFFFE) \ 2 And &H7FFFFFFF)
+                Else
+                    c = (c \ 2) And &H7FFFFFFF
+                End If
+            Next
+
+            m_crcTable(n) = c
+        Next
+
+        m_crcTableComputed = True
+    End Sub
+End Class
+
+
+Class ADLER32_
+    Public Function Checksum(ByRef data)
+        Checksum = Update(1, data)
+    End Function
+
+    Public Function Update(ByVal adler, ByRef data)
+        Dim s1
+        s1 = adler And &HFFFF&
+
+        Dim s2
+        s2 = (adler \ 2 ^ 16) And &HFFFF&
+
+        Dim n
+        For n = 0 To UBound(data)
+            s1 = (s1 + data(n)) Mod 65521
+            s2 = (s2 + s1) Mod 65521
+        Next
+
+        Dim temp
+
+        If (s2 And &H8000&) > 0 Then
+            temp = ((s2 And &H7FFF&) * 2 ^ 16) Or &H80000000
+        Else
+            temp = s2 * 2 ^ 16
+        End If
+
+        Update = temp + s1
+    End Function
+End Class
+
+
+Class Deflate_
+    Public Function Compress(ByRef data, ByVal btype)
+        If btype <> DeflateBType_NoCompression Then Call Err.Raise(5)
+
+        Dim bytesLen
+        bytesLen = UBound(data) + 1
+
+        Dim quotient
+        quotient = bytesLen \ &HFFFF&
+
+        Dim remainder
+        remainder = bytesLen Mod &HFFFF&
+
+        Dim bufferSize
+        bufferSize = quotient * (1 + 4 + &HFFFF&)
+
+        If remainder > 0 Then
+            bufferSize = bufferSize + (1 + 4 + remainder)
+        End If
+
+        ReDim ret(bufferSize - 1)
+
+        Dim srcPtr
+        Dim dstPtr
+
+        Dim bfinal
+        Dim dLen
+        Dim dNLen
+
+        Dim idx
+        idx = 0
+
+        Dim temp
+
+        Dim i
+        For i = 0 To quotient - 1
+            bfinal = 0
+            ret(idx) = CByte(bfinal Or (btype * 2 ^ 1))
+            idx = idx + 1
+
+            dLen = &HFFFF&
+            temp = BitConverter.GetBytes(CLng(dLen), False)
+            ret(idx + 0) = CByte(temp(0))
+            ret(idx + 1) = CByte(temp(1))
+            idx = idx + 2
+
+            dNLen = dLen Xor &HFFFF&
+            temp = BitConverter.GetBytes(dNLen, False)
+            ret(idx + 0) = CByte(temp(0))
+            ret(idx + 1) = CByte(temp(1))
+            idx = idx + 2
+
+            Dim j
+            For j = 0 To &HFFFF& - 1
+                ret(idx) = CByte(data(&HFFFF& * i + j))
+                idx = idx + 1
+            Next
+        Next
+
+        If remainder > 0 Then
+            bfinal = CByte(1)
+            ret(idx) = CByte(bfinal Or (btype * 2 ^ 1))
+            idx = idx + 1
+
+            dLen = remainder
+            temp = BitConverter.GetBytes(CLng(dLen), False)
+            ret(idx + 0) = CByte(temp(0))
+            ret(idx + 1) = CByte(temp(1))
+            idx = idx + 2
+
+            dNLen = dLen Xor &HFFFF&
+            temp = BitConverter.GetBytes(CLng(dNLen), False)
+            ret(idx + 0) = CByte(temp(0))
+            ret(idx + 1) = CByte(temp(1))
+            idx = idx + 2
+
+            For j = 0 To remainder - 1
+                ret(idx) = CByte(data(&HFFFF& * quotient + j))
+                idx = idx + 1
+            Next
+        End If
+
+        Compress = ret
+    End Function
+End Class
+
+
+Class PNG_
+    Public Function GetPNG(ByRef data, _
+                           ByVal pictWidth, _
+                           ByVal pictHeight, _
+                           ByVal foreColorRgb, _
+                           ByVal backColorRgb, _
+                           ByVal tColor)
+        Dim bitDepth
+        Select Case tColor
+            Case PngColorType_pTrueColor, PngColorType_pTrueColorAlpha
+                bitDepth = 8
+            Case PngColorType_pIndexColor
+                bitDepth = 1
+            Case Else
+                Call Err.Raise(5)
+        End Select
+
+        Dim psgn
+        Set psgn = MakePngSignature()
+
+        Dim ihdr
+        Set ihdr = MakeIHDR( _
+            pictWidth, _
+            pictHeight, _
+            bitDepth, _
+            tColor, _
+            PngCompressionMethod_Deflate, _
+            PngFilterType_pNone, _
+            PngInterlaceMethod_pNo _
+        )
+
+        Dim iplt
+        If tColor = PngColorType_pIndexColor Then
+            Set iplt = MakeIPLT(Array(foreColorRgb, backColorRgb))
+        Else
+            Set iplt = Nothing
+        End If
+
+        Dim idat
+        Set idat = MakeIDAT(data, DeflateBType_NoCompression)
+
+        Dim iend
+        Set iend = MakeIEND()
+
+        Dim ret
+        ret = ToBytes(psgn, ihdr, iplt, idat, iend)
+
+        Dim bw
+        Set bw = New BinaryWriter
+
+        Dim i
+        For i = 0 To UBound(ret)
+            bw.Append(ret(i))
+        Next
+
+        Set GetPNG = bw
+    End Function
+
+    Private Function MakePngSignature()
+        Dim ret
+        Set ret = New PngSignature
+
+        With ret
+            .psData(0) = CByte(&H89)
+            .psData(1) = CByte(Asc("P"))
+            .psData(2) = CByte(Asc("N"))
+            .psData(3) = CByte(Asc("G"))
+            .psData(4) = CByte(Asc(vbCr))
+            .psData(5) = CByte(Asc(vbLf))
+            .psData(6) = CByte(&H1A)
+            .psData(7) = CByte(Asc(vbLf))
+        End With
+
+        Set MakePngSignature = ret
+    End Function
+
+    Private Function MakeIHDR(ByVal pictWidth, _
+                              ByVal pictHeight, _
+                              ByVal bitDepth, _
+                              ByVal tColor, _
+                              ByVal compression, _
+                              ByVal tFilter, _
+                              ByVal interlace)
+        Const STR_IHDR = &H49484452
+
+        Dim ret
+        Set ret = New PngChunk
+
+        Dim lbe
+        Dim crc
+
+        Dim temp
+        Dim idx
+        idx = 0
+
+        With ret
+            .pLength = 13
+            .pType = STR_IHDR
+
+            .ResizeData(.pLength - 1)
+            temp = BitConverter.GetBytes(CLng(pictWidth), True)
+            .pData(idx + 0) = CByte(temp(0))
+            .pData(idx + 1) = CByte(temp(1))
+            .pData(idx + 2) = CByte(temp(2))
+            .pData(idx + 3) = CByte(temp(3))
+            idx = idx + 4
+
+            temp = BitConverter.GetBytes(CLng(pictHeight), True)
+            .pData(idx + 0) = CByte(temp(0))
+            .pData(idx + 1) = CByte(temp(1))
+            .pData(idx + 2) = CByte(temp(2))
+            .pData(idx + 3) = CByte(temp(3))
+            idx = idx + 4
+
+            .pData(idx + 0) = CByte(bitDepth)
+            .pData(idx + 1) = CByte(tColor)
+            .pData(idx + 2) = CByte(compression)
+            .pData(idx + 3) = CByte(tFilter)
+            .pData(idx + 4) = CByte(interlace)
+
+            crc = CRC32.Checksum(BitConverter.GetBytes(STR_IHDR, True))
+            .pCRC = CRC32.Update(crc, .pData)
+        End With
+
+        Set MakeIHDR = ret
+    End Function
+
+    Private Function MakeIPLT(ByRef rgbArray())
+        Const STR_PLTE = &H504C5445
+
+        Dim idx
+        idx = 0
+
+        Dim ret
+        Set ret = New PngChunk
+
+        Dim v
+        Dim crc
+
+        With ret
+            .pLength = (UBound(rgbArray) + 1) * 3
+            .pType = STR_PLTE
+
+            .ResizeData(.pLength - 1)
+            For Each v In rgbArray
+                .pData(idx + 0) = CByte(v And &HFF&)
+                .pData(idx + 1) = CByte((v And &HFF00&) \ 2 ^ 8)
+                .pData(idx + 2) = CByte((v And &HFF0000) \ 2 ^ 16)
+                idx = idx + 3
+            Next
+
+            crc = CRC32.Checksum(BitConverter.GetBytes(.pType, True))
+            .pCRC = CRC32.Update(crc, .pData)
+        End With
+
+        Set MakeIPLT = ret
+    End Function
+
+    Private Function MakeIDAT(ByRef data, ByVal btype)
+        Const STR_IDAT = &H49444154
+
+        Dim ret
+        Set ret = New PngChunk
+
+        Dim crc
+
+        With ret
+            .pData = ZLIB.Compress(data, btype)
+            .pLength = UBound(.pData) + 1
+            .pType = STR_IDAT
+            crc = CRC32.Checksum(BitConverter.GetBytes(STR_IDAT, True))
+            .pCRC = CRC32.Update(crc, .pData)
+        End With
+
+        Set MakeIDAT = ret
+    End Function
+
+    Private Function MakeIEND()
+        Const STR_IEND = &H49454E44
+
+        Dim ret
+        Set ret = New PngChunk
+
+        With ret
+            .pLength = 0
+            .pType = STR_IEND
+            .pCRC = CRC32.Checksum(BitConverter.GetBytes(STR_IEND, True))
+        End With
+
+        Set MakeIEND = ret
+    End Function
+
+    Private Function ToBytes(ByVal psgn, ByVal ihdr, ByVal iplt, ByVal idat, ByVal iend)
+        Dim pfhSize
+        pfhSize = 8
+
+        Dim ihdrSize
+        ihdrSize = 12 + ihdr.pLength
+
+        Dim ipltSize
+
+        If Not (iplt Is Nothing) Then
+            ipltSize = 12 + iplt.pLength
+        Else
+            ipltSize = 0
+        End If
+
+        Dim idatSize
+        idatSize = 12 + idat.pLength
+
+        Dim iendSize
+        iendSize = 12 + iend.pLength
+
+        Dim ret
+        ReDim ret(pfhSize + ihdrSize + ipltSize + idatSize + iendSize - 1)
+
+        Dim idx
+        idx = 0
+        Dim i
+
+        With psgn
+            For i = 0 To UBound(.psData)
+                ret(idx) = CByte(.psData(i))
+                idx = idx + 1
+            Next
+        End With
+
+        Dim lbe
+
+        Dim temp
+        With ihdr
+            temp = ihdr.GetBytes()
+            For i = 0 To UBound(temp)
+                ret(idx) = CByte(temp(i))
+                idx = idx + 1
+            Next
+        End With
+
+        If Not (iplt Is Nothing) Then
+            With iplt
+                temp = iplt.GetBytes()
+                For i = 0 To UBound(temp)
+                    ret(idx) = CByte(temp(i))
+                    idx = idx + 1
+                Next
+            End With
+        End If
+
+        With idat
+            temp = idat.GetBytes()
+            For i = 0 To UBound(temp)
+                ret(idx) = CByte(temp(i))
+                idx = idx + 1
+            Next
+        End With
+
+        With iend
+            temp = iend.GetBytes()
+            For i = 0 To UBound(temp)
+                ret(idx) = CByte(temp(i))
+                idx = idx + 1
+            Next
+        End With
+
+        ToBytes = ret
+    End Function
+End Class
+
+
+Class ZLIB_
+    Public Function Compress(ByRef data, ByVal btype)
+        Dim cmf
+        cmf = CByte(&H78)
+
+        Dim fdict
+        fdict = CByte(&H0)
+
+        Dim flevel
+        flevel = CByte(CompressionLevel_Default * 2 ^ 6)
+
+        Dim flg
+        flg = CByte(flevel + fdict)
+
+        Dim fcheck
+        fcheck = CByte(31 - ((cmf * 2 ^ 8 + flg) Mod 31))
+
+        flg = flg + fcheck
+
+        Dim bytes
+        bytes = Deflate.Compress(data, btype)
+
+        Dim adler
+        adler = ADLER32.Checksum(data)
+
+        Dim sz
+        sz = UBound(bytes) + 1
+
+        Dim ret
+        ReDim ret(1 + 1 + sz + 4 - 1)
+
+        Dim idx
+        idx = 0
+
+        Dim lbe
+        ret(idx) = CByte(cmf)
+        idx = idx + 1
+
+        ret(idx) = CByte(flg)
+        idx = idx + 1
+
+        Dim i
+        For i = 0 To UBound(bytes)
+            ret(idx) = CByte(bytes(i))
+            idx = idx + 1
+        Next
+
+        Dim temp
+        temp = BitConverter.GetBytes(CLng(adler), True)
+        ret(idx + 0) = CByte(temp(0))
+        ret(idx + 1) = CByte(temp(1))
+        ret(idx + 2) = CByte(temp(2))
+        ret(idx + 3) = CByte(temp(3))
+
+        Compress = ret
+    End Function
+End Class
+
+
+Class PngSignature
+    Public psData(7)
+End Class
+
+
+Class PngChunk
+    Public pLength
+    Public pType
+    Public pData
+    Public pCRC
+
+    Private Sub Class_Initialize()
+        pData = Array()
+    End Sub
+
+    Public Sub ResizeData(ByVal sz)
+        ReDim pData(sz)
+    End Sub
+
+    Public Function GetBytes()
+        Dim ret
+        If pLength > 0 Then
+            ReDim ret(12 + (UBound(pData) + 1) - 1)
+        Else
+            ReDim ret(12 - 1)
+        End If
+
+        Dim idx
+        idx = 0
+
+        Dim temp
+        temp = BitConverter.GetBytes(CLng(pLength), True)
+        ret(idx + 0) = CByte(temp(0))
+        ret(idx + 1) = CByte(temp(1))
+        ret(idx + 2) = CByte(temp(2))
+        ret(idx + 3) = CByte(temp(3))
+        idx = idx + 4
+
+        temp = BitConverter.GetBytes(CLng(pType), True)
+        ret(idx + 0) = CByte(temp(0))
+        ret(idx + 1) = CByte(temp(1))
+        ret(idx + 2) = CByte(temp(2))
+        ret(idx + 3) = CByte(temp(3))
+        idx = idx + 4
+
+        If pLength > 0 Then
+            Dim i
+            For i = 0 To UBound(pData)
+                ret(idx) = CByte(pData(i))
+                idx = idx + 1
+            Next
+        End If
+
+        temp = BitConverter.GetBytes(CLng(pCRC), True)
+        ret(idx + 0) = CByte(temp(0))
+        ret(idx + 1) = CByte(temp(1))
+        ret(idx + 2) = CByte(temp(2))
+        ret(idx + 3) = CByte(temp(3))
+
+        GetBytes = ret
+    End Function
+End Class
+
+
+Class BitConverter_
+    Public Function GetBytes(ByVal arg, ByVal reverse)
+        Dim ret
+        Dim temp
+
+        Select Case VarType(arg)
+            Case vbByte
+                ReDim ret(0)
+                ret(0) = CByte(arg)
+            Case vbInteger
+                ReDim ret(1)
+                ret(0) = CByte(arg And &HFF&)
+                ret(1) = CByte((arg And &HFF00&) \ 2 ^ 8)
+
+                If reverse Then
+                    temp = ret(0)
+                    ret(0) = CByte(ret(1))
+                    ret(1) = CByte(temp)
+                End If
+            Case vbLong
+                ReDim ret(3)
+                ret(0) = CByte(arg And &HFF&)
+                ret(1) = CByte((arg And &HFF00&) \ 2 ^ 8)
+                ret(2) = CByte((arg And &HFF0000) \ 2 ^ 16)
+                ret(3) = CByte((arg And &HFF000000) \ 2 ^ 24 And &HFF&)
+
+                If reverse Then
+                    temp = ret(0)
+                    ret(0) = CByte(ret(3))
+                    ret(3) = CByte(temp)
+
+                    temp = ret(1)
+                    ret(1) = CByte(ret(2))
+                    ret(2) = CByte(temp)
+                End If
+            Case Else
+                Call Err.Raise(5)
+        End Select
+
+        GetBytes = ret
     End Function
 End Class

@@ -1,37 +1,53 @@
 Option Explicit
 Include "QRCode.vbs"
 
-Const FORE_COLOR = "#000000"
-Const BACK_COLOR = "#FFFFFF"
-Const SCALE = 5
-
+Const FORE_COLOR = "#0000ff"
+Const BACK_COLOR = "#e0ffff"
+Const SCALE = 10
 
 Call Example1
-'Call Example2
+Call Example2
 
 
 Public Sub Example1()
     Dim sbls: Set sbls = CreateSymbols(ECR_M, 40, False)
-    Call sbls.AppendText("Hello World")
+    sbls.AppendText "Hello World"
+    
+    Dim sbl: Set sbl = sbls.Item(0)
 
-    ' 24bpp bitmap
-'    Call sbls.Item(0).Save24bppDIB("qrcode.bmp", SCALE, FORE_COLOR, BACK_COLOR)
-    ' 1bpp bitmap
-    Call sbls.Item(0).Save1bppDIB("qrcode.bmp", SCALE, FORE_COLOR, BACK_COLOR)
+    ' BMP truecolor
+    sbl.SaveAs "qr_truecolor.bmp"
+    ' PNG truecolor
+    sbl.SaveAs "qr_truecolor.png"
     ' SVG
-'    Call sbls.Item(0).SaveSvg("qrcode.svg", SCALE, FORE_COLOR)
+    sbl.SaveAs "qr.svg"
+
+    ' BMP monochrome
+    sbl.SaveAs2 "qr2_monochrome.bmp", SCALE, True, False, FORE_COLOR, BACK_COLOR
+    ' BMP truecolor
+    sbl.SaveAs2 "qr2_truecolor.bmp", SCALE, False, False, FORE_COLOR, BACK_COLOR
+    ' PNG monochrome
+    sbl.SaveAs2 "qr2_monochrome.png", SCALE, True, False, FORE_COLOR, BACK_COLOR
+    ' PNG truecolor
+    sbl.SaveAs2 "qr2_truecolor.png", SCALE, False, False, FORE_COLOR, BACK_COLOR
+
+    ' PNG transparent
+    sbl.SaveAs2 "qr2_transparent.png", SCALE, False, True, "#000000", "#ffffff"
+
+    ' SVG
+    sbl.SaveAs2 "qr2_.svg", SCALE, False, False, FORE_COLOR, BACK_COLOR
 End Sub
 
 
 Public Sub Example2()
     Dim sbls: Set sbls = CreateSymbols(ECR_M, 1, True)
-    Call sbls.AppendText("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    sbls.AppendText "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-    Dim fName
+    Dim filename
     Dim i
     For i = 0 To sbls.Count - 1
-        fName = "qrcode" & CStr(i) & ".bmp"
-        Call sbls.Item(i).Save24bppDIB(fName, SCALE, FORE_COLOR, BACK_COLOR)
+        filename = "qr_split_" & CStr(i) & ".bmp"
+        sbls.Item(i).SaveAs filename
     Next
 End Sub
 
@@ -42,5 +58,5 @@ Private Sub Include(ByVal strFile)
     Dim stream: Set stream = fso.OpenTextFile(strDir & "\" & strFile, 1)
 
     ExecuteGlobal stream.ReadAll() 
-    Call stream.Close 
+    stream.Close 
 End Sub
